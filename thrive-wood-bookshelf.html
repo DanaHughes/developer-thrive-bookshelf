@@ -899,6 +899,18 @@ body:not(.reader-open) .toast { top: auto; bottom: 24px; }
 .wk-go--again small { color: var(--muted); }
 .page .wk-later { margin: 0; display: flex; align-items: center; justify-content: center; gap: 4px; text-align: center; border-top: 1px dashed #cfc6ab; padding-top: 1.6cqw; font-size: clamp(9.5px, 2cqw, 12px); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #6b6045; }
 .page .wk-later--done { color: #2c5226; border-top-color: #cfd9c6; }
+/* Look ahead: a later day's card opens to show what is coming (it never launches anything early). */
+.wk-card--ahead[data-peek] { cursor: pointer; }
+.wk-card--ahead[data-peek]:hover { border-color: #a99c7e; background: #f7f3e8; }
+.wk-card--ahead[data-peek]:focus-visible { outline: 3px solid var(--headline); outline-offset: 2px; }
+.wk-cards > .wk-card--peek { flex: 2.6 1 0; border-style: solid; border-color: #a99c7e; background: #f7f3e8; }
+.wk-card--peek .wk-desc, .wk-card--peek .wk-label { display: block; }
+.page .wk-card--peek .wk-title { font-size: clamp(13px, 2.8cqw, 16px); }
+.wk-card--peek .wk-num { font-size: clamp(22px, 6cqw, 38px); }
+.wk-preview { list-style: none; margin: 0 0 1.6cqw; padding: 0; display: flex; flex-direction: column; gap: 1.2cqw; }
+.wk-preview li { border: 1.5px dashed #cfc6ab; border-radius: 10px; padding: 6px 8px; background: #fffdf6; color: #4f4836; font-weight: 600; font-size: clamp(11px, 2.4cqw, 13.5px); text-align: center; line-height: 1.25; }
+.wk-preview li small { display: block; font-weight: 400; color: #7c715a; margin-top: 2px; }
+.page .wk-peekhint { margin: 0 0 1cqw; text-align: center; font-size: clamp(9.5px, 2cqw, 12px); font-weight: 600; color: #6b6045; text-decoration: underline; text-underline-offset: 3px; }
 .wk-later svg { width: 14px; height: 14px; }
 .wk-finish { margin-top: 3cqw; padding-top: 2.4cqw; border-top: 1px solid #e6e1d3; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2cqw; }
 .page .wk-finish__text { margin: 0; font-size: clamp(12px, 2.6cqw, 14.5px); color: var(--body); }
@@ -2400,9 +2412,21 @@ function weekCardsHtml(book, later) {
     let foot = '';
     if (st === 'today') foot = buttons(false);
     else if (st === 'today-done') foot = buttons(true) || `<p class="wk-later wk-later--done">${iconSvg('check')}${esc(T('doneTag'))}</p>`;
+    else if (st === 'ahead' && !later && state.peek === i) {
+      // Look ahead: what this day holds, by name and minutes. Nothing here launches early.
+      const rows = items.map((x, k) => {
+        const a = x.it.app ? APPS[x.it.app] : null, label = a ? (a.name || a.button) : x.it.label;
+        const head = items.length > 1 ? T('assignmentBtn', { n:k + 1 }) + ': ' : '';
+        return `<li>${esc(head + (label || ''))}${x.min > 0 ? `<small>${esc(T('spendMinutes', { minutes:x.min }))}</small>` : ''}</li>`;
+      }).join('');
+      foot = (rows ? `<ul class="wk-preview">${rows}</ul>` : '') + `<p class="wk-later">${esc(T('notToday'))}</p>`;
+    }
+    else if (st === 'ahead' && !later) foot = `<p class="wk-peekhint">${esc(T('peekHint') || 'Tap to look ahead')}</p><p class="wk-later">${esc(T('notToday'))}</p>`;
     else if (st === 'ahead') foot = `<p class="wk-later">${esc(T('notToday'))}</p>`;
     else foot = `<p class="wk-later wk-later--done">${iconSvg('check')}${esc(T('doneTag'))}</p>`;
-    return `<div class="wk-card wk-card--${st}" role="listitem">
+    const peek = st === 'ahead' && !later;
+    const peekAttrs = peek ? ` data-peek="${i}" tabindex="0" aria-expanded="${state.peek === i}" aria-label="${esc(T('dayNumber', { n:i + 1 }))}: ${esc(T('peekHint') || 'Tap to look ahead')}"` : '';
+    return `<div class="wk-card wk-card--${st}${peek && state.peek === i ? ' wk-card--peek' : ''}" role="listitem"${peekAttrs}>
       <span class="wk-tag">${esc(tag)}</span>
       <span class="wk-num" aria-hidden="true">${esc(T('dayNumber', { n:i + 1 }))}</span>
       <span class="wk-label">${esc(T('dayLabel'))}<span class="sr-only"> ${i + 1}</span></span>
@@ -2554,7 +2578,7 @@ function openBook(key, context, trigger) {
   }
   if (!book || state.book) return;
   stopReading();
-  state.book = book; state.returnFocus = trigger; state.lastBookKey = key;
+  state.book = book; state.returnFocus = trigger; state.lastBookKey = key; state.peek = null;
   dom.title.textContent = book.title;
   dom.sub.textContent = `${label} · ${grade.label}`;
   dom.backLabel.textContent = context === 'course' ? `Back to ${label}` : `Back to ${T('courseExploreName')}`;
@@ -2622,6 +2646,15 @@ function updateDoneBtn() {
   refreshWeekCards();
 }
 dom.reader.addEventListener('click', e => { if (e.target.closest('[data-finish]')) toggleFinished(); });
+// Look ahead: tap a later day to see what it holds; tap it again to close it.
+function togglePeek(card) {
+  const i = Number(card.dataset.peek);
+  state.peek = state.peek === i ? null : i;
+  refreshWeekCards();
+  const again = document.querySelector(`[data-week-cards] [data-peek="${i}"]`); if (again) again.focus();
+}
+dom.reader.addEventListener('click', e => { const c = e.target.closest('[data-peek]'); if (c) togglePeek(c); });
+dom.reader.addEventListener('keydown', e => { const c = e.target.closest && e.target.closest('[data-peek]'); if (c && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); togglePeek(c); } });
 $('#doneBtn').addEventListener('click', toggleFinished);
 function toggleFinished() {
   if (!state.book) return;
