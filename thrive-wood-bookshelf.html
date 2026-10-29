@@ -899,6 +899,10 @@ body:not(.reader-open) .toast { top: auto; bottom: 24px; }
 .wk-go--again small { color: var(--muted); }
 .page .wk-later { margin: 0; display: flex; align-items: center; justify-content: center; gap: 4px; text-align: center; border-top: 1px dashed #cfc6ab; padding-top: 1.6cqw; font-size: clamp(9.5px, 2cqw, 12px); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #6b6045; }
 .page .wk-later--done { color: #2c5226; border-top-color: #cfd9c6; }
+.page .inside-head { margin: 2.4cqw 0 1cqw; font-size: clamp(13px, 3cqw, 17px); color: var(--headline); }
+.page .inside-list { margin: 0; padding-left: 1.2em; max-width: 72%; font-size: clamp(11px, 2.5cqw, 14.5px); line-height: 1.35; }
+.page .inside-list li { margin-bottom: .8cqw; }
+.page .inside-list li::marker { color: var(--sage, #5d7f4f); }
 /* Look ahead: a later day's card opens to show what is coming (it never launches anything early). */
 .wk-card--ahead[data-peek] { cursor: pointer; }
 .wk-card--ahead[data-peek]:hover { border-color: #a99c7e; background: #f7f3e8; }
@@ -1080,7 +1084,7 @@ body:not(.reader-open) .toast { top: auto; bottom: 24px; }
    ===================================================================== */
 (function () {
 'use strict';
-var VERSION = 14;
+var VERSION = 15;
 var GRADES = [
   { id:'k', n:0, label:'Kindergarten' }, { id:'1', n:1, label:'First Grade' }, { id:'2', n:2, label:'Second Grade' },
   { id:'3', n:3, label:'Third Grade' },  { id:'4', n:4, label:'Fourth Grade' }, { id:'5', n:5, label:'Fifth Grade' },
@@ -1211,18 +1215,38 @@ function writingBook(n) {
     notes:WRITING_NOTES });
 }
 
+// The main Language Arts book: "Core Language Arts", "Start Here" under the title, and a
+// "What's inside" list on its first page (contents), by grade band. No brand names here: students read it.
+var CORE_LA = {
+  title:'Core Language Arts', subtitle:'Start Here',
+  oldTitles:['Phonics and Word Study', 'Reading and Word Study', 'Reading and Vocabulary'],
+  oldSubtitles:['Letter Recognition, Phonics, Spelling, Vocabulary, Word Study, Comprehension, Grammar, and Fluency',
+                'Phonics, Spelling, Vocabulary, Word Study, Comprehension, Grammar, and Fluency',
+                'Reading, Word Study, Comprehension, Grammar, and Vocabulary'],
+  inside: function (n) {
+    if (n <= 1) return ['Online reading lessons that grow with you', 'Grade-level skill path for reading and language',
+      'Letter names and letter sounds', 'Phonics: sounding out and blending words', 'Sight words and spelling',
+      'Vocabulary and listening comprehension', 'Reading fluency'];
+    if (n <= 5) return ['Online reading lessons that grow with you', 'Grade-level skill path for reading and language',
+      'Phonics, spelling and word study', 'Vocabulary', 'Reading comprehension: stories and nonfiction',
+      'Grammar and sentences', 'Reading fluency'];
+    return ['Grade-level skill path for reading and language', 'Online reading lessons that grow with you',
+      'Reading comprehension: literature and nonfiction', 'Vocabulary and word study (roots and word parts)',
+      'Grammar, usage and sentence skills', 'Reading closely and citing evidence'];
+  }
+};
 function seedBooksForGrade(n) {
   var G = GRADES[n].label, out = [];
-  if (n <= 1) out.push(wb({ key:'reading', title:'Phonics and Word Study', color:C.reading, icon:'book',
-    subtitle:'Letter Recognition, Phonics, Spelling, Vocabulary, Word Study, Comprehension, Grammar, and Fluency',
+  if (n <= 1) out.push(wb({ key:'reading', title:CORE_LA.title, color:C.reading, icon:'book',
+    subtitle:CORE_LA.subtitle, contents:CORE_LA.inside(n),
     links:[app('core5'), app('ixlCheck')], schedule:readDays(n),
     notes:['Adaptive online reading lessons combined with grade-level exposure activities.', 'Second semester: grade-level skill activities may be added.', SKILL_NOTE] }));
-  else if (n <= 5) out.push(wb({ key:'reading', title:'Reading and Word Study', color:C.reading, icon:'book',
-    subtitle:'Phonics, Spelling, Vocabulary, Word Study, Comprehension, Grammar, and Fluency',
+  else if (n <= 5) out.push(wb({ key:'reading', title:CORE_LA.title, color:C.reading, icon:'book',
+    subtitle:CORE_LA.subtitle, contents:CORE_LA.inside(n),
     links:[app('core5'), app('ixlCheck')], schedule:readDays(n),
     notes: n === 2 ? ['Adaptive online reading lessons combined with grade-level exposure activities.', 'Second semester: grade-level skill activities may be added.', SKILL_NOTE]
                    : ['Adaptive online reading lessons with matching skill activities.', SKILL_NOTE] }));
-  else out.push(wb({ key:'reading', title:'Reading and Vocabulary', color:C.reading, icon:'book', subtitle:'Reading, Word Study, Comprehension, Grammar, and Vocabulary',
+  else out.push(wb({ key:'reading', title:CORE_LA.title, color:C.reading, icon:'book', subtitle:CORE_LA.subtitle, contents:CORE_LA.inside(n),
     links:[app('ixlCheck'), app('powerUp')], schedule:readDays(n),
     notes:['Adaptive online reading lessons and grade-level exposure through grade-level activities.', 'Second semester: grade-level skill activities may be added.', SKILL_NOTE] }));
   var HW_DAY = day('Handwriting lesson', 'Complete the next pages in your handwriting workbook.', [0]);
@@ -1599,6 +1623,26 @@ function upgradeFrom13(d) {
       return nid;
     });
   });
+  d.version = 14;
+  return upgradeFrom14(d);
+}
+
+/* Version 14 to 15: the main Language Arts book becomes "Core Language Arts", with "Start Here"
+   under the title and a "What's inside" list for its grade band. A title or subtitle Dana changed is kept. */
+function upgradeFrom14(d) {
+  var band = {};
+  GRADES.forEach(function (g) { ((d.grades && d.grades[g.id] && d.grades[g.id].books) || []).forEach(function (id) { if (band[id] === undefined) band[id] = g.n; }); });
+  Object.keys(d.workbooks || {}).forEach(function (id) {
+    var b = d.workbooks[id];
+    if (!b || b.course !== 'la' || !(b.links || []).some(function (l) { return l && l.kind === 'app' && (l.app === 'core5' || l.app === 'powerUp'); })) return;
+    if (CORE_LA.oldTitles.indexOf(b.title) >= 0) b.title = CORE_LA.title;
+    if (!b.subtitle || CORE_LA.oldSubtitles.indexOf(b.subtitle) >= 0) b.subtitle = CORE_LA.subtitle;
+    if (!Array.isArray(b.contents)) {
+      var n = band[id] !== undefined ? band[id] : ((b.links || []).some(function (l) { return l && l.app === 'powerUp'; }) ? 6 : 3);
+      b.contents = CORE_LA.inside(n);
+    }
+    if (b.adminLabel) b.adminLabel = b.adminLabel.replace(/^[^·]+·/, CORE_LA.title + ' ·');
+  });
   d.version = VERSION;
   return d;
 }
@@ -1650,7 +1694,7 @@ function refreshText(d) {
 function needsUpgrade(data) { return !data || !data.version || data.version < VERSION; }
 
 window.ThriveSeed = { VERSION:VERSION, TEXT_FIELDS:TEXT_FIELDS, TEXT_DEFAULTS:TEXT_DEFAULTS, SEED_APPS:SEED_APPS,
-  buildSeed:buildSeed, gradeRange:gradeRange, weekPlan:weekPlan, dayLinks:dayLinks, upgradeFrom2:upgradeFrom2, upgradeFrom3:upgradeFrom3, upgradeFrom4:upgradeFrom4, upgradeFrom5:upgradeFrom5, upgradeFrom6:upgradeFrom6, upgradeFrom7:upgradeFrom7, upgradeFrom8:upgradeFrom8, upgradeFrom9:upgradeFrom9, upgradeFrom10:upgradeFrom10, upgradeFrom11:upgradeFrom11, upgradeFrom12:upgradeFrom12, upgradeFrom13:upgradeFrom13, refreshText:refreshText, CALENDAR:CALENDAR, schoolWeeks:schoolWeeks, parseDay:parseDay, dayKey:dayKey, mondayOf:mondayOf, needsUpgrade:needsUpgrade };
+  buildSeed:buildSeed, gradeRange:gradeRange, weekPlan:weekPlan, dayLinks:dayLinks, upgradeFrom2:upgradeFrom2, upgradeFrom3:upgradeFrom3, upgradeFrom4:upgradeFrom4, upgradeFrom5:upgradeFrom5, upgradeFrom6:upgradeFrom6, upgradeFrom7:upgradeFrom7, upgradeFrom8:upgradeFrom8, upgradeFrom9:upgradeFrom9, upgradeFrom10:upgradeFrom10, upgradeFrom11:upgradeFrom11, upgradeFrom12:upgradeFrom12, upgradeFrom13:upgradeFrom13, upgradeFrom14:upgradeFrom14, refreshText:refreshText, CALENDAR:CALENDAR, schoolWeeks:schoolWeeks, parseDay:parseDay, dayKey:dayKey, mondayOf:mondayOf, needsUpgrade:needsUpgrade };
 })();
 
 </script>
@@ -1849,7 +1893,7 @@ const GRADES = [
    ========================================================= */
 const CURRICULUM_KEY = 'thriveCurriculum:v1';
 // Saved data older than version 2 (brand names, no weekly cards) is ignored until the Curriculum tab upgrades it.
-function loadCurriculum() { try { const raw = localStorage.getItem(CURRICULUM_KEY); let d = raw ? JSON.parse(raw) : null; if (d && d.version === 3) d = window.ThriveSeed.upgradeFrom3(d); else if (d && d.version === 4) d = window.ThriveSeed.upgradeFrom4(d); else if (d && d.version === 5) d = window.ThriveSeed.upgradeFrom5(d); else if (d && d.version === 6) d = window.ThriveSeed.upgradeFrom6(d); else if (d && d.version === 7) d = window.ThriveSeed.upgradeFrom7(d); else if (d && d.version === 8) d = window.ThriveSeed.upgradeFrom8(d); else if (d && d.version === 9) d = window.ThriveSeed.upgradeFrom9(d); else if (d && d.version === 10) d = window.ThriveSeed.upgradeFrom10(d); else if (d && d.version === 11) d = window.ThriveSeed.upgradeFrom11(d); else if (d && d.version === 12) d = window.ThriveSeed.upgradeFrom12(d); else if (d && d.version === 13) d = window.ThriveSeed.upgradeFrom13(d); window.ThriveSeed.refreshText(d); return d && !window.ThriveSeed.needsUpgrade(d) ? d : null; } catch (e) { return null; } }
+function loadCurriculum() { try { const raw = localStorage.getItem(CURRICULUM_KEY); let d = raw ? JSON.parse(raw) : null; if (d && d.version === 3) d = window.ThriveSeed.upgradeFrom3(d); else if (d && d.version === 4) d = window.ThriveSeed.upgradeFrom4(d); else if (d && d.version === 5) d = window.ThriveSeed.upgradeFrom5(d); else if (d && d.version === 6) d = window.ThriveSeed.upgradeFrom6(d); else if (d && d.version === 7) d = window.ThriveSeed.upgradeFrom7(d); else if (d && d.version === 8) d = window.ThriveSeed.upgradeFrom8(d); else if (d && d.version === 9) d = window.ThriveSeed.upgradeFrom9(d); else if (d && d.version === 10) d = window.ThriveSeed.upgradeFrom10(d); else if (d && d.version === 11) d = window.ThriveSeed.upgradeFrom11(d); else if (d && d.version === 12) d = window.ThriveSeed.upgradeFrom12(d); else if (d && d.version === 13) d = window.ThriveSeed.upgradeFrom13(d); else if (d && d.version === 14) d = window.ThriveSeed.upgradeFrom14(d); window.ThriveSeed.refreshText(d); return d && !window.ThriveSeed.needsUpgrade(d) ? d : null; } catch (e) { return null; } }
 let CUR = loadCurriculum() || window.ThriveSeed.buildSeed();
 const TEXT_DEFAULTS = window.ThriveSeed.TEXT_DEFAULTS;
 const NUM_WORDS = ['zero','one','two','three','four','five','six','seven'];
@@ -1874,7 +1918,7 @@ function toShelfBook(w, gradeDays) {
   return {
     key: w.id, title: w.title, subtitle: w.subtitle || '', color: w.color, icon: ICONS[w.icon] ? w.icon : 'book',
     badge: w.badge || '', items: (w.links || []).map(l => l.kind === 'app' ? { app: l.app } : { label: l.label, desc: l.desc, url: l.url }),
-    itemNote: w.linkNote || '', notes: w.notes || [], extra: w.placement === 'extra' ? (w.extraLabel || 'Optional Practice') : undefined,
+    itemNote: w.linkNote || '', notes: w.notes || [], contents: Array.isArray(w.contents) ? w.contents : [], extra: w.placement === 'extra' ? (w.extraLabel || 'Optional Practice') : undefined,
     days: (w.course === 'explore' || w.placement === 'extra') ? null : (w.days || gradeDays),
     // THIS WEEK cards: one per virtual learning day, each pointing at one of the book's buttons
     week: (w.course === 'explore' || w.placement === 'extra') ? null : window.ThriveSeed.weekPlan(w, w.days || gradeDays)
@@ -2462,6 +2506,11 @@ function leaveBook() {
   const t = setTimeout(done, 2500);
   v.addEventListener('ended', done);
 }
+// "What's inside": a short list on a book's first page (book.contents, set in the Curriculum data).
+function insideHtml(book) {
+  if (!book.contents || !book.contents.length) return '';
+  return `<h3 class="inside-head">${esc(T('whatsInside') || 'What’s inside')}</h3><ul class="inside-list">${book.contents.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
+}
 function buildPages(book, contextLabel) {
   if (book.week && state.bookContext === 'course') {
     const days = book.week.length;
@@ -2471,6 +2520,7 @@ function buildPages(book, contextLabel) {
       ${book.subtitle ? `<p class="book-subtitle">${esc(book.subtitle)}</p>` : ''}
       ${book.badge ? `<span class="badge badge--soon book-badge">${esc(book.badge)}</span>` : ''}
       <p class="wk-explain">${esc(days === 1 ? T('weekExplainOne') : T('weekExplain', { days: NUM_WORDS[days] || days }))}</p>
+      ${insideHtml(book)}
       <p class="wk-alldone" data-week-done hidden>${esc(T('weekDone'))}</p>
       ${book.itemNote ? `<p class="link-note">${esc(book.itemNote)}</p>` : ''}
       <p class="complete-msg" data-complete-msg role="status" hidden></p>

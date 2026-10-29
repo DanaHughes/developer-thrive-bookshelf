@@ -8,7 +8,7 @@
    ===================================================================== */
 (function () {
 'use strict';
-var VERSION = 14;
+var VERSION = 15;
 var GRADES = [
   { id:'k', n:0, label:'Kindergarten' }, { id:'1', n:1, label:'First Grade' }, { id:'2', n:2, label:'Second Grade' },
   { id:'3', n:3, label:'Third Grade' },  { id:'4', n:4, label:'Fourth Grade' }, { id:'5', n:5, label:'Fifth Grade' },
@@ -139,18 +139,38 @@ function writingBook(n) {
     notes:WRITING_NOTES });
 }
 
+// The main Language Arts book: "Core Language Arts", "Start Here" under the title, and a
+// "What's inside" list on its first page (contents), by grade band. No brand names here: students read it.
+var CORE_LA = {
+  title:'Core Language Arts', subtitle:'Start Here',
+  oldTitles:['Phonics and Word Study', 'Reading and Word Study', 'Reading and Vocabulary'],
+  oldSubtitles:['Letter Recognition, Phonics, Spelling, Vocabulary, Word Study, Comprehension, Grammar, and Fluency',
+                'Phonics, Spelling, Vocabulary, Word Study, Comprehension, Grammar, and Fluency',
+                'Reading, Word Study, Comprehension, Grammar, and Vocabulary'],
+  inside: function (n) {
+    if (n <= 1) return ['Online reading lessons that grow with you', 'Grade-level skill path for reading and language',
+      'Letter names and letter sounds', 'Phonics: sounding out and blending words', 'Sight words and spelling',
+      'Vocabulary and listening comprehension', 'Reading fluency'];
+    if (n <= 5) return ['Online reading lessons that grow with you', 'Grade-level skill path for reading and language',
+      'Phonics, spelling and word study', 'Vocabulary', 'Reading comprehension: stories and nonfiction',
+      'Grammar and sentences', 'Reading fluency'];
+    return ['Grade-level skill path for reading and language', 'Online reading lessons that grow with you',
+      'Reading comprehension: literature and nonfiction', 'Vocabulary and word study (roots and word parts)',
+      'Grammar, usage and sentence skills', 'Reading closely and citing evidence'];
+  }
+};
 function seedBooksForGrade(n) {
   var G = GRADES[n].label, out = [];
-  if (n <= 1) out.push(wb({ key:'reading', title:'Phonics and Word Study', color:C.reading, icon:'book',
-    subtitle:'Letter Recognition, Phonics, Spelling, Vocabulary, Word Study, Comprehension, Grammar, and Fluency',
+  if (n <= 1) out.push(wb({ key:'reading', title:CORE_LA.title, color:C.reading, icon:'book',
+    subtitle:CORE_LA.subtitle, contents:CORE_LA.inside(n),
     links:[app('core5'), app('ixlCheck')], schedule:readDays(n),
     notes:['Adaptive online reading lessons combined with grade-level exposure activities.', 'Second semester: grade-level skill activities may be added.', SKILL_NOTE] }));
-  else if (n <= 5) out.push(wb({ key:'reading', title:'Reading and Word Study', color:C.reading, icon:'book',
-    subtitle:'Phonics, Spelling, Vocabulary, Word Study, Comprehension, Grammar, and Fluency',
+  else if (n <= 5) out.push(wb({ key:'reading', title:CORE_LA.title, color:C.reading, icon:'book',
+    subtitle:CORE_LA.subtitle, contents:CORE_LA.inside(n),
     links:[app('core5'), app('ixlCheck')], schedule:readDays(n),
     notes: n === 2 ? ['Adaptive online reading lessons combined with grade-level exposure activities.', 'Second semester: grade-level skill activities may be added.', SKILL_NOTE]
                    : ['Adaptive online reading lessons with matching skill activities.', SKILL_NOTE] }));
-  else out.push(wb({ key:'reading', title:'Reading and Vocabulary', color:C.reading, icon:'book', subtitle:'Reading, Word Study, Comprehension, Grammar, and Vocabulary',
+  else out.push(wb({ key:'reading', title:CORE_LA.title, color:C.reading, icon:'book', subtitle:CORE_LA.subtitle, contents:CORE_LA.inside(n),
     links:[app('ixlCheck'), app('powerUp')], schedule:readDays(n),
     notes:['Adaptive online reading lessons and grade-level exposure through grade-level activities.', 'Second semester: grade-level skill activities may be added.', SKILL_NOTE] }));
   var HW_DAY = day('Handwriting lesson', 'Complete the next pages in your handwriting workbook.', [0]);
@@ -527,6 +547,26 @@ function upgradeFrom13(d) {
       return nid;
     });
   });
+  d.version = 14;
+  return upgradeFrom14(d);
+}
+
+/* Version 14 to 15: the main Language Arts book becomes "Core Language Arts", with "Start Here"
+   under the title and a "What's inside" list for its grade band. A title or subtitle Dana changed is kept. */
+function upgradeFrom14(d) {
+  var band = {};
+  GRADES.forEach(function (g) { ((d.grades && d.grades[g.id] && d.grades[g.id].books) || []).forEach(function (id) { if (band[id] === undefined) band[id] = g.n; }); });
+  Object.keys(d.workbooks || {}).forEach(function (id) {
+    var b = d.workbooks[id];
+    if (!b || b.course !== 'la' || !(b.links || []).some(function (l) { return l && l.kind === 'app' && (l.app === 'core5' || l.app === 'powerUp'); })) return;
+    if (CORE_LA.oldTitles.indexOf(b.title) >= 0) b.title = CORE_LA.title;
+    if (!b.subtitle || CORE_LA.oldSubtitles.indexOf(b.subtitle) >= 0) b.subtitle = CORE_LA.subtitle;
+    if (!Array.isArray(b.contents)) {
+      var n = band[id] !== undefined ? band[id] : ((b.links || []).some(function (l) { return l && l.app === 'powerUp'; }) ? 6 : 3);
+      b.contents = CORE_LA.inside(n);
+    }
+    if (b.adminLabel) b.adminLabel = b.adminLabel.replace(/^[^·]+·/, CORE_LA.title + ' ·');
+  });
   d.version = VERSION;
   return d;
 }
@@ -578,5 +618,5 @@ function refreshText(d) {
 function needsUpgrade(data) { return !data || !data.version || data.version < VERSION; }
 
 window.ThriveSeed = { VERSION:VERSION, TEXT_FIELDS:TEXT_FIELDS, TEXT_DEFAULTS:TEXT_DEFAULTS, SEED_APPS:SEED_APPS,
-  buildSeed:buildSeed, gradeRange:gradeRange, weekPlan:weekPlan, dayLinks:dayLinks, upgradeFrom2:upgradeFrom2, upgradeFrom3:upgradeFrom3, upgradeFrom4:upgradeFrom4, upgradeFrom5:upgradeFrom5, upgradeFrom6:upgradeFrom6, upgradeFrom7:upgradeFrom7, upgradeFrom8:upgradeFrom8, upgradeFrom9:upgradeFrom9, upgradeFrom10:upgradeFrom10, upgradeFrom11:upgradeFrom11, upgradeFrom12:upgradeFrom12, upgradeFrom13:upgradeFrom13, refreshText:refreshText, CALENDAR:CALENDAR, schoolWeeks:schoolWeeks, parseDay:parseDay, dayKey:dayKey, mondayOf:mondayOf, needsUpgrade:needsUpgrade };
+  buildSeed:buildSeed, gradeRange:gradeRange, weekPlan:weekPlan, dayLinks:dayLinks, upgradeFrom2:upgradeFrom2, upgradeFrom3:upgradeFrom3, upgradeFrom4:upgradeFrom4, upgradeFrom5:upgradeFrom5, upgradeFrom6:upgradeFrom6, upgradeFrom7:upgradeFrom7, upgradeFrom8:upgradeFrom8, upgradeFrom9:upgradeFrom9, upgradeFrom10:upgradeFrom10, upgradeFrom11:upgradeFrom11, upgradeFrom12:upgradeFrom12, upgradeFrom13:upgradeFrom13, upgradeFrom14:upgradeFrom14, refreshText:refreshText, CALENDAR:CALENDAR, schoolWeeks:schoolWeeks, parseDay:parseDay, dayKey:dayKey, mondayOf:mondayOf, needsUpgrade:needsUpgrade };
 })();
