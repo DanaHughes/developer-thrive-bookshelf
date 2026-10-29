@@ -1141,7 +1141,7 @@ var L = {
 var SEED_APPS = {
   core5:   { vendor:'Lexia Core5',           name:'Online reading lessons', button:'Start today’s lessons',  url:'https://www.lexiacore5.com/?SiteID=7229-2300-5006-6748', login:'Click here' },
   powerUp: { vendor:'Lexia PowerUp',         name:'Online reading lessons', button:'Start today’s lessons',  url:'https://www.lexiapowerup.com/', login:'Click here' },
-  ixl:     { vendor:'IXL',                   name:'Grade-level skill path', button:'Open your skill path',        url:'https://www.ixl.com/signin', login:'Click here' },
+  ixl:     { vendor:'IXL Math',              name:'Math Lessons',           button:'Start today’s math lessons',  url:'https://www.ixl.com/signin', login:'Click here' },
   // Language Arts' second button. For the first days of class it opens the reading check-in (IXL ELA Diagnostic);
   // change the name, button and link back to the skill path in the Curriculum tab when the check-ins are done.
   ixlCheck:{ vendor:'IXL ELA Diagnostic',    name:'Reading check-in',       button:'Start your check-in',         url:'https://www.ixl.com/diagnostic/arena', login:'Click here' }
@@ -1155,8 +1155,13 @@ var MATH_SUB = {
   7:'Ratios & Proportional Relationships, The Number System, Expressions & Equations, Geometry, and Statistics & Probability',
   8:'The Number System, Expressions & Equations, Functions, Geometry, and Statistics & Probability'
 };
-var MATH_DAY = ['Math skill path', 'Work on your grade-level skill path.'];
-var MATH_NOTE = 'Mathematics uses a grade-level skill path every virtual learning day.';
+var MATH_DAY = ['Math skill path', 'Work on your grade-level skill path.'];          // version 13 wording (upgrades only)
+var MATH_NOTE13 = 'Mathematics uses a grade-level skill path every virtual learning day.';
+// Mathematics, three days a week: Day 1 the Diagnostic then Recommendations, Day 2 Recommendations, Day 3 the assigned path.
+var MATH_DAYS = [['Math Lessons: Diagnostic and Recommendations', 'Start in the Diagnostic to keep it up to date, then work in your Recommendations tab.'],
+                 ['Math Lessons: Recommendations', 'Keep working in your Recommendations tab.'],
+                 ['Math Lessons: Assigned path', 'Work on your assigned path.']];
+var MATH_NOTE = 'Math Lessons every virtual learning day: Day 1, the Diagnostic and then your Recommendations; Day 2, your Recommendations; Day 3, your assigned path.';
 function app(key) { return { kind:'app', app:key }; }
 function link(label, desc, url) { return { kind:'link', label:label, desc:desc, url:url }; }
 // A virtual learning day: its card title, description, and which of the book's buttons it shows (by position).
@@ -1227,8 +1232,7 @@ function seedBooksForGrade(n) {
       notes:['Morphology, figurative language, and literary analysis.'] }));
   }
   out.push(wb({ key:'math', course:'math', title:'Mathematics', color:C.math, icon:'math', subtitle:MATH_SUB[n], links:[app('ixl')],
-    // Every virtual learning day: the grade-level skill path.
-    schedule:same(3, day(MATH_DAY[0], MATH_DAY[1], [0], { 0:MATH_MINUTES[n] })),
+    schedule:MATH_DAYS.map(function (m) { return day(m[0], m[1], [0], { 0:MATH_MINUTES[n] }); }),
     notes:[MATH_NOTE] }));
   var sel = [];
   if (n <= 2) sel.push(link('Social-Emotional Learning, Grades K–2', 'Online course', L.selK2));
@@ -1530,13 +1534,14 @@ function upgradeFrom12(d) {
       dy.links = dy.links.filter(function (i) { return gone.indexOf(i) < 0; }).map(moved);
       if (dy.title === 'Math lessons and skill path') { dy.title = MATH_DAY[0]; dy.desc = MATH_DAY[1]; }
     });
-    b.notes = (b.notes || []).map(function (t) { return t === 'Mathematics uses adaptive online math lessons and a grade-level skill path every virtual learning day.' ? MATH_NOTE : t; });
+    b.notes = (b.notes || []).map(function (t) { return t === 'Mathematics uses adaptive online math lessons and a grade-level skill path every virtual learning day.' ? MATH_NOTE13 : t; });
   });
   d.version = 13;
   return upgradeFrom13(d);
 }
 
-/* Version 13 to 14: Language Arts button order and minutes, and Mathematics minutes, set per grade
+/* Version 13 to 14: Language Arts button order and minutes, and Mathematics minutes, set per grade.
+   IXL Math becomes Math Lessons, with a Diagnostic / Recommendations / assigned path flow over the three days
    (READ_MINUTES, MATH_MINUTES). A book shared by grades that now need different minutes is split
    into one copy per grade; every other edit on it is kept. */
 function upgradeFrom13(d) {
@@ -1547,7 +1552,11 @@ function upgradeFrom13(d) {
     if (c.course === 'math') {
       var i = appAt(c, IXL);
       if (i < 0) return c;
-      (c.schedule || []).forEach(function (dy) { if (dy && Array.isArray(dy.links) && dy.links.indexOf(i) >= 0) { dy.links = [i]; dy.minutes = {}; dy.minutes[i] = MATH_MINUTES[n]; } });
+      (c.schedule || []).forEach(function (dy, k) {
+        if (dy && Array.isArray(dy.links) && dy.links.indexOf(i) >= 0) { dy.links = [i]; dy.minutes = {}; dy.minutes[i] = MATH_MINUTES[n]; }
+        if (dy && MATH_DAYS[k] && (dy.title === MATH_DAY[0] || dy.title === 'Math lessons and skill path')) { dy.title = MATH_DAYS[k][0]; dy.desc = MATH_DAYS[k][1]; }
+      });
+      c.notes = (c.notes || []).map(function (t) { return t === MATH_NOTE13 ? MATH_NOTE : t; });
       return c;
     }
     var x = appAt(c, IXL), y = appAt(c, LEXIA);
@@ -1559,6 +1568,9 @@ function upgradeFrom13(d) {
       dy.links = [0, 1]; dy.minutes = { 0:READ_MINUTES[n][0], 1:READ_MINUTES[n][1] };
     });
     return c;
+  }
+  if (d.apps && d.apps.ixl && d.apps.ixl.name === 'Grade-level skill path') {   // IXL Math is called Math Lessons now
+    d.apps.ixl.name = SEED_APPS.ixl.name; d.apps.ixl.button = SEED_APPS.ixl.button; d.apps.ixl.vendor = SEED_APPS.ixl.vendor;
   }
   var made = {};
   GRADES.forEach(function (g) {
