@@ -361,7 +361,7 @@ input[aria-invalid="true"],textarea[aria-invalid="true"]{border-color:var(--dang
    ===================================================================== */
 (function () {
 'use strict';
-var VERSION = 12;
+var VERSION = 13;
 var GRADES = [
   { id:'k', n:0, label:'Kindergarten' }, { id:'1', n:1, label:'First Grade' }, { id:'2', n:2, label:'Second Grade' },
   { id:'3', n:3, label:'Third Grade' },  { id:'4', n:4, label:'Fourth Grade' }, { id:'5', n:5, label:'Fifth Grade' },
@@ -437,8 +437,7 @@ var SEED_APPS = {
   ixl:     { vendor:'IXL',                   name:'Grade-level skill path', button:'Open your skill path',        url:'https://www.ixl.com/signin', login:'Click here' },
   // Language Arts' second button. For the first days of class it opens the reading check-in (IXL ELA Diagnostic);
   // change the name, button and link back to the skill path in the Curriculum tab when the check-ins are done.
-  ixlCheck:{ vendor:'IXL ELA Diagnostic',    name:'Reading check-in',       button:'Start your check-in',         url:'https://www.ixl.com/diagnostic/arena', login:'Click here' },
-  mypath:  { vendor:'MyPath',                name:'Online math lessons',    button:'Start today’s math lessons', url:'https://clever.com/login', login:'Click here' }
+  ixlCheck:{ vendor:'IXL ELA Diagnostic',    name:'Reading check-in',       button:'Start your check-in',         url:'https://www.ixl.com/diagnostic/arena', login:'Click here' }
 };
 var C = { reading:'#2f4a35', handwriting:'#6a4c33', writing:'#253a5c', novel:'#8a5a22', wordstudy:'#1f4a3c', math:'#6b2c27', sel:'#7d3a4a', vocab:'#3d5a45', typing:'#55633a' };
 var MATH_SUB = {
@@ -449,6 +448,8 @@ var MATH_SUB = {
   7:'Ratios & Proportional Relationships, The Number System, Expressions & Equations, Geometry, and Statistics & Probability',
   8:'The Number System, Expressions & Equations, Functions, Geometry, and Statistics & Probability'
 };
+var MATH_DAY = ['Math skill path', 'Work on your grade-level skill path.'];
+var MATH_NOTE = 'Mathematics uses a grade-level skill path every virtual learning day.';
 function app(key) { return { kind:'app', app:key }; }
 function link(label, desc, url) { return { kind:'link', label:label, desc:desc, url:url }; }
 // A virtual learning day: its card title, description, and which of the book's buttons it shows (by position).
@@ -515,10 +516,10 @@ function seedBooksForGrade(n) {
       subtitle:'Root Words, Figurative Language, and Literary Analysis', links:[link('Thrive Morphology Game', 'Free Thrive word game', L.morphGame)],
       notes:['Morphology, figurative language, and literary analysis.'] }));
   }
-  out.push(wb({ key:'math', course:'math', title:'Mathematics', color:C.math, icon:'math', subtitle:MATH_SUB[n], links:[app('mypath'), app('ixl')],
-    // Every virtual learning day: online math lessons AND the grade-level skill path.
-    schedule:same(3, day('Math lessons and skill path', 'Complete today’s online math lessons, then work on your grade-level skill path.', [0, 1])),
-    notes:['Mathematics uses adaptive online math lessons and a grade-level skill path every virtual learning day.'] }));
+  out.push(wb({ key:'math', course:'math', title:'Mathematics', color:C.math, icon:'math', subtitle:MATH_SUB[n], links:[app('ixl')],
+    // Every virtual learning day: the grade-level skill path.
+    schedule:same(3, day(MATH_DAY[0], MATH_DAY[1], [0])),
+    notes:[MATH_NOTE] }));
   var sel = [];
   if (n <= 2) sel.push(link('Social-Emotional Learning, Grades K–2', 'Online course', L.selK2));
   if (n === 2 || n === 3) sel.push(link('Social-Emotional Learning, Grades 2–3', 'Online course', L.sel23));
@@ -596,7 +597,6 @@ function upgradeFrom2(d) {
   var fresh = buildSeed();
   Object.keys(fresh.workbooks).forEach(function (id) { if (/^math-/.test(id)) d.workbooks[id] = fresh.workbooks[id]; });
   d.apps = d.apps || {};
-  if (!d.apps.mypath) d.apps.mypath = JSON.parse(JSON.stringify(SEED_APPS.mypath));
   if (!d.apps.ixl) d.apps.ixl = JSON.parse(JSON.stringify(SEED_APPS.ixl));
   Object.keys(d.workbooks).forEach(function (id) {
     (d.workbooks[id].schedule || []).forEach(function (day) { day.links = dayLinks(day); delete day.link; });
@@ -730,7 +730,7 @@ function upgradeFrom7(d) {
    Grades 3, 4 and 5 swap their "Coming soon" Writing book for it; everything else is kept. */
 function upgradeFrom8(d) {
   var fresh = buildSeed(), newId = fresh.grades['3'].books.filter(function (id) { return /^writing35-/.test(id); })[0];
-  if (!newId) { d.version = VERSION; return d; }
+  if (!newId) { d.version = 9; return upgradeFrom9(d); }
   d.workbooks[newId] = fresh.workbooks[newId];
   ['3', '4', '5'].forEach(function (g) {
     var shelf = d.grades && d.grades[g];
@@ -799,6 +799,29 @@ function upgradeFrom11(d) {
     if (!b || b.course !== 'la') return;
     (b.links || []).forEach(function (l) { if (l && l.kind === 'app' && l.app === 'ixl') l.app = 'ixlCheck'; });
   });
+  d.version = 12;
+  return upgradeFrom12(d);
+}
+
+/* Version 12 to 13: the online math lessons app is gone. Mathematics keeps only the
+   grade-level skill path, for every grade. Every other edit is kept. */
+function upgradeFrom12(d) {
+  if (d.apps) delete d.apps.mypath;
+  Object.keys(d.workbooks || {}).forEach(function (id) {
+    var b = d.workbooks[id];
+    if (!b || !Array.isArray(b.links)) return;
+    var gone = b.links.map(function (l, i) { return l && l.kind === 'app' && l.app === 'mypath' ? i : -1; }).filter(function (i) { return i >= 0; });
+    if (!gone.length) return;
+    b.links = b.links.filter(function (l, i) { return gone.indexOf(i) < 0; });
+    var moved = function (i) { return i - gone.filter(function (g) { return g < i; }).length; };
+    (b.schedule || []).forEach(function (dy) {
+      if (!dy || !Array.isArray(dy.links)) return;
+      if (dy.minutes) { var m = {}; Object.keys(dy.minutes).forEach(function (k) { if (gone.indexOf(+k) < 0) m[moved(+k)] = dy.minutes[k]; }); dy.minutes = m; }
+      dy.links = dy.links.filter(function (i) { return gone.indexOf(i) < 0; }).map(moved);
+      if (dy.title === 'Math lessons and skill path') { dy.title = MATH_DAY[0]; dy.desc = MATH_DAY[1]; }
+    });
+    b.notes = (b.notes || []).map(function (t) { return t === 'Mathematics uses adaptive online math lessons and a grade-level skill path every virtual learning day.' ? MATH_NOTE : t; });
+  });
   d.version = VERSION;
   return d;
 }
@@ -850,7 +873,7 @@ function refreshText(d) {
 function needsUpgrade(data) { return !data || !data.version || data.version < VERSION; }
 
 window.ThriveSeed = { VERSION:VERSION, TEXT_FIELDS:TEXT_FIELDS, TEXT_DEFAULTS:TEXT_DEFAULTS, SEED_APPS:SEED_APPS,
-  buildSeed:buildSeed, gradeRange:gradeRange, weekPlan:weekPlan, dayLinks:dayLinks, upgradeFrom2:upgradeFrom2, upgradeFrom3:upgradeFrom3, upgradeFrom4:upgradeFrom4, upgradeFrom5:upgradeFrom5, upgradeFrom6:upgradeFrom6, upgradeFrom7:upgradeFrom7, upgradeFrom8:upgradeFrom8, upgradeFrom9:upgradeFrom9, upgradeFrom10:upgradeFrom10, upgradeFrom11:upgradeFrom11, refreshText:refreshText, CALENDAR:CALENDAR, schoolWeeks:schoolWeeks, parseDay:parseDay, dayKey:dayKey, mondayOf:mondayOf, needsUpgrade:needsUpgrade };
+  buildSeed:buildSeed, gradeRange:gradeRange, weekPlan:weekPlan, dayLinks:dayLinks, upgradeFrom2:upgradeFrom2, upgradeFrom3:upgradeFrom3, upgradeFrom4:upgradeFrom4, upgradeFrom5:upgradeFrom5, upgradeFrom6:upgradeFrom6, upgradeFrom7:upgradeFrom7, upgradeFrom8:upgradeFrom8, upgradeFrom9:upgradeFrom9, upgradeFrom10:upgradeFrom10, upgradeFrom11:upgradeFrom11, upgradeFrom12:upgradeFrom12, refreshText:refreshText, CALENDAR:CALENDAR, schoolWeeks:schoolWeeks, parseDay:parseDay, dayKey:dayKey, mondayOf:mondayOf, needsUpgrade:needsUpgrade };
 })();
 
 </script>
@@ -1694,6 +1717,11 @@ function upgrade(d) {
     d = SEED.upgradeFrom2(d);
     upgradedFromOld = true;
     upgradeNote = 'Updated Mathematics: online math lessons and the grade-level skill path every virtual learning day. Your other edits were kept.';
+  }
+  if (d && d.version === 12) {   // keep every edit; Mathematics drops the online math lessons app
+    d = SEED.upgradeFrom12(d);
+    upgradedFromOld = true;
+    upgradeNote = 'Mathematics now has only the grade-level skill path. Your other edits were kept.';
   }
   if (d && d.version === 11) {   // keep every edit; Language Arts' second button opens the reading check-in
     d = SEED.upgradeFrom11(d);
